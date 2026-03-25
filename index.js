@@ -1,77 +1,92 @@
 const express = require('express');
-const routes = require('./routes');
-const path = require('path');
-const bodyParser = require('body-parser');
-const expressValidator = require('express-validator');
-const flash = require('connect-flash');
-const session = require('express-session');
-const cookieParser = require('cookie-parser');
-const passport = require('./config/passport');
+const router = express.Router();
 
-// helpers con algunas funciones
-const helpers = require('./helpers');
+// importar express validator
+const { body } = require('express-validator/check');
 
-// Crear la conexión a la BD
-const db = require('./config/db');
+// importar el controlador
+const proyectosController = require('../controllers/proyectosController');
+const tareasController = require('../controllers/tareasController');
+const usuariosController = require('../controllers/usuariosController');
+const authController = require('../controllers/authController');
 
-// Importar el modelo
-require('./models/Proyectos');
-require('./models/Tareas');
-require('./models/Usuarios');
+module.exports = function() {
+    // ruta para el home
+    router.get('/', 
+        authController.usuarioAutenticado,
+        proyectosController.proyectosHome
+    );
 
-db.sync()
-    .then(() => console.log('Conectado al Servidor'))
-    .catch(error => console.log(error));
+    router.get('/nuevo-proyecto',
+        authController.usuarioAutenticado,
+        proyectosController.formularioProyecto
+    );
+    router.post('/nuevo-proyecto', 
+        authController.usuarioAutenticado,
+        body('nombre').not().isEmpty().trim().escape(),
+        proyectosController.nuevoProyecto
+    );
 
-// crear una app de express
-const app = express();
+    // Listar Proyecto
+    router.get('/proyectos/:url', 
+        authController.usuarioAutenticado,
+        proyectosController.proyectoPorUrl
+    );
 
-// Donde cargar los archivos estaticos
-app.use(express.static('public'));
+    // Actualizar el Proyecto
+    router.get('/proyecto/editar/:id', 
+        authController.usuarioAutenticado,
+        proyectosController.formularioEditar
+    );
 
-// Habilitar Pug
-app.set('view engine', 'pug');
+    router.post('/nuevo-proyecto/:id', 
+        authController.usuarioAutenticado,
+        body('nombre').not().isEmpty().trim().escape(),
+        proyectosController.actualizarProyecto
+    );
 
-// habilitar bodyParser para leer datos del formulario
+    // Eliminar Proyecto
+    router.delete('/proyectos/:url', 
+        authController.usuarioAutenticado,
+        proyectosController.eliminarProyecto
+    );
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: false }));
+    // Tareas
+    router.post('/proyectos/:url', 
+        authController.usuarioAutenticado,
+        tareasController.agregarTarea
+    );
 
-// Agregamos express validator a toda la aplicación
-app.use(expressValidator());
+    // Actualizar Tarea
+    router.patch('/tareas/:id', 
+        authController.usuarioAutenticado,
+        tareasController.cambiarEstadoTarea
+    );
 
+    // Eliminar Tarea
+    router.delete('/tareas/:id', 
+        authController.usuarioAutenticado,
+        tareasController.eliminarTarea
+    );
 
+    // Crear nueva cuenta
+    router.get('/crear-cuenta', usuariosController.formCrearCuenta);
+    router.post('/crear-cuenta', usuariosController.crearCuenta);
+    router.get('/confirmar/:correo', usuariosController.confirmarCuenta);
 
-// Añadir la carpeta de las vistas
-app.set('views', path.join(__dirname, './views'));
+    // iniciar sesión
+    router.get('/iniciar-sesion', usuariosController.formIniciarSesion);
+    router.post('/iniciar-sesion', authController.autenticarUsuario);
 
+    // cerrar sesion
+    router.get('/cerrar-sesion', authController.cerrarSesion);
 
+    // reestablecer contraseña
+    router.get('/reestablecer', usuariosController.formRestablecerPassword);
+    router.post('/reestablecer', authController.enviarToken);
+    router.get('/reestablecer/:token', authController.validarToken);
+    router.post('/reestablecer/:token', authController.actualizarPassword);
 
-app.use(cookieParser());
+    return router;
+}
 
-// sessiones nos permiten navegar entre distintas paginas sin volvernos a autenticar
-app.use(session({ 
-    secret: "keyboard cat", 
-    resave: false, 
-    saveUninitialized: false 
-}));
-
-
-app.use(passport.initialize());
-app.use(passport.session());
-
-// agregar flash messages
-app.use(flash());
-
-// Pasar var dump a la aplicación
-app.use((req, res, next) => {
-    res.locals.vardump = helpers.vardump;
-    res.locals.mensajes = req.flash();
-    res.locals.usuario = {...req.user} || null;
-    next();
-});
-
-
-app.use('/', routes() );
-
-app.listen(3000);
